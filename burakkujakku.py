@@ -115,6 +115,7 @@ class Chips:
             payout = int(self.current_bet * 2.5)
         elif outcome == "win":
             payout = self.current_bet * 2
+            
         elif outcome == "draw":
             payout = self.current_bet
         else:
@@ -224,6 +225,7 @@ def main():
     is_gameover_screen = False  # 破産（所持金0）フラグ
     result_timer = 0
     payout_settled = False  # チップ精算を1度だけ行うためのフラグ
+    is_double_down = False  # ダブルダウンしたか記憶するフラグ
 
     while True:
         # --- 1. イベント処理 ---
@@ -317,6 +319,44 @@ def main():
                             # 勝負がついたので、ゲームオーバーとタイマーをセット
                             game_over = True
                             result_timer = pg.time.get_ticks()
+                        elif event.key == pg.K_d:# DOUBLE DOWN
+                            # ダブルダウンは最初の2枚（手札が2枚）のときのみ可能
+                            if len(player.cards) == 2 and chips.total_chips >= chips.current_bet:
+                                chips.total_chips -= chips.current_bet  # 追加で同額を支払う
+                                chips.current_bet *= 2  # このゲームの賭け金を2倍にする
+                                is_double_down = True  # ダブルダウンフラグをON
+
+                                player.add(deck.draw())
+                                
+                                
+                                # カードを1枚引いた時点でバーストした場合
+                                if player.total() > 21:
+                                    message.text = "Bust! You Lose!"
+                                    outcome = "lose"
+                                    game_over = True
+                                    result_timer = pg.time.get_ticks()
+                                # バーストしなかった場合は、そのままスタンド（ディーラーのターン）へ移行
+                                else:
+                                    while dealer.total() < 17:
+                                        dealer.add(deck.draw())
+                                    p = player.total()
+                                    d = dealer.total()
+
+                                    if d > 21:
+                                        message.text = "Dealer Bust! You Win!"
+                                        outcome = "win"
+                                    elif p > d:
+                                        message.text = "You Win!"
+                                        outcome = "win"
+                                    elif p < d:
+                                        message.text = "You Lose!"
+                                        outcome = "lose"
+                                    else:
+                                        message.text = "Draw!"
+                                        outcome = "draw"
+
+                                    game_over = True
+                                    result_timer = pg.time.get_ticks()
 
         # --- 2. 精算処理 (勝負が決まった瞬間に1回だけ実行) ---
         if scene == "GAME" and game_over and not betting_phase and not payout_settled:
@@ -340,6 +380,7 @@ def main():
             start_rect = start_text.get_rect(center=(WIDTH // 2, HEIGHT // 3 * 2))
             screen.blit(start_text, start_rect)
 
+                
         elif scene == "GAME":
             screen.fill(GREEN)
             chips.draw_ui(screen, font)
@@ -358,8 +399,10 @@ def main():
                 message.update(screen)
 
                 if not game_over:
-                    guide = font.render("[H]: Hit (もう1枚)   [S]: Stand (勝負)", True, WHITE)
+                    guide = font.render("[H]: Hit (もう1枚) [S]: Stand (勝負)", True, WHITE)
+                    guide2 = font.render("[D]: double down(2倍で勝負)", True, WHITE)
                     screen.blit(guide, (50, 20))
+                    screen.blit(guide2,(50, 45))
 
             # 初期ブラックジャック演出（手札2枚かつ合計21点）
             if player.total() == 21 and len(player.cards) == 2 and not betting_phase:
@@ -381,6 +424,9 @@ def main():
                     # チップが0になったらゲームオーバー画面へ
                     is_gameover_screen = True
                 else:
+                    if is_double_down:
+                        chips.current_bet //= 2
+                        is_double_down = False
                     # チップがあれば次のゲームを自動開始
                     deck, player, dealer, message, game_over, outcome = new_game(msg_font, chips)
                     betting_phase = True

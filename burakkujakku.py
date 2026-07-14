@@ -167,6 +167,36 @@ def main():
                     game_over = True
                     result_timer = pg.time.get_ticks()
 
+                    #ダブルダウンの追加処理
+                elif event.key == pg.K_d:# DOUBLE DOWN
+                    # ダブルダウンは最初の2枚（手札が2枚）のときのみ可能
+                    if len(player.cards) == 2:
+                        player.add(deck.draw())
+                        
+                        # カードを1枚引いた時点でバーストした場合
+                        if player.total() > 21:
+                            message.text = "Bust! You Lose!"
+                            game_over = True
+                            result_timer = pg.time.get_ticks()
+                        # バーストしなかった場合は、そのままスタンド（ディーラーのターン）へ移行
+                        else:
+                            while dealer.total() < 17:
+                                dealer.add(deck.draw())
+                            p = player.total()
+                            d = dealer.total()
+
+                            if d > 21:
+                                message.text = "Dealer Bust! You Win!"
+                            elif p > d:
+                                message.text = "You Win!"
+                            elif p < d:
+                                message.text = "You Lose!"
+                            else:
+                                message.text = "Draw!"
+
+                            game_over = True
+                            result_timer = pg.time.get_ticks()
+
         screen.fill(GREEN)
         dealer.draw_dealer(screen, font, 50, 80, not game_over)
         player.draw(screen, font, 50, 320)

@@ -97,10 +97,12 @@ class Hand:
 
 class Message:
     def __init__(self):
-        self.font = pg.font.SysFont("msgothic", 30)
+        self.font = None
         self.text = ""
 
     def update(self,screen):
+        if self.font is None:
+            self.font = pg.font.SysFont("msgothic", 30)
         img = self.font.render(self.text, True, WHITE)
         screen.blit(img,(50,520))
 
@@ -130,8 +132,9 @@ class Burakkujakku_gamen:
         go_img = pg.Surface((WIDTH, HEIGHT))
         pg.draw.rect(go_img, (0, 0, 0), pg.Rect(0, 0, WIDTH, HEIGHT))
         go_img.set_alpha(180)
+        go_img.fill((0, 0, 0))
         
-        fonto = pg.font.Font(None, 50)
+        fonto = pg.font.Font(None, 80)
         txt = fonto.render("Black Jack", True, (255, 255, 255))
         go_img.blit(txt, [WIDTH // 2 -150, HEIGHT // 2 - 40])
 
@@ -154,6 +157,7 @@ def main():
         
         if game_over and result_timer == 0:
             result_timer = pg.time.get_ticks()
+
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 return
@@ -164,7 +168,6 @@ def main():
                     if player.total() > 21:
                         message.text = "Bust! You Lose!"
                         game_over = True
-                        result_timer = pg.time.get_ticks()
                 elif event.key == pg.K_s:# STAND
                     while dealer.total() < 17:
                         dealer.add(deck.draw())

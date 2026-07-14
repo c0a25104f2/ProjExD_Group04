@@ -9,7 +9,12 @@ GREEN = (34, 139, 34)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GOLD = (255, 215, 0)
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+# スクリプトの場所にカレントディレクトリを移動（環境によってエラーになるのを防ぐため、例外処理を追加）
+try:
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+except Exception:
+    pass
 
 
 class Card:  # カード1枚を表す
@@ -65,7 +70,6 @@ class Hand:  # 手札を管理する部分
             aces -= 1
 
         return value
-
 
     def draw(self, screen, font, x, y):  # 手札を画面に表示する部分
         for i, card in enumerate(self.cards):
@@ -160,7 +164,7 @@ class Burakkujakku_gamen:
         go_img.fill((0, 0, 0))
         go_img.set_alpha(180)
 
-        fonto = pg.font.Font(None, 80)
+        fonto = pg.font.SysFont("msgothic", 80)
         txt = fonto.render("Black Jack", True, (255, 255, 255))
         go_img.blit(txt, [WIDTH // 2 - 150, HEIGHT // 2 - 40])
         screen.blit(go_img, [0, 0])
@@ -205,10 +209,11 @@ def main():
     pg.display.set_caption("Pygame ブラックジャック")
 
     # 日本語表示対応のフォント指定
-    font = pg.font.SysFont("msgothic", 24)
+    font = pg.font.SysFont("msgothic", 25)
+    main_menu_font = pg.font.SysFont("msgothic", 60)
     msg_font = pg.font.SysFont("msgothic", 30)
     clock = pg.time.Clock()
-
+    scene = "TITLE"
     chips = Chips()
     gmo = Gmo()
 
@@ -227,7 +232,7 @@ def main():
                 return
 
             if event.type == pg.KEYDOWN:
-                # 破産ゲームオーバー画面の時
+                # 破産状態でのゲームオーバー画面表示中のキー受付
                 if is_gameover_screen:
                     if event.key == pg.K_RSHIFT:  # 右シフトで復活
                         chips.total_chips = 1000
@@ -236,71 +241,85 @@ def main():
                         betting_phase = True
                         is_gameover_screen = False
                         payout_settled = False
-                    continue
+                    continue  # 他のキーは無視
 
-                # ベットフェーズ（金額決め）の時
-                if betting_phase:
-                    if event.key == pg.K_UP:
-                        chips.adjust_bet(10)
-                    elif event.key == pg.K_DOWN:
-                        chips.adjust_bet(-10)
-                    elif event.key == pg.K_RIGHT:
-                        chips.adjust_bet(100)
-                    elif event.key == pg.K_LEFT:
-                        chips.adjust_bet(-100)
-                    elif event.key == pg.K_RETURN:
-                        chips.place_bet()
-                        betting_phase = False
+                # タイトル画面でのキー受付
+                if scene == "TITLE":
+                    if event.key == pg.K_e:
+                        deck, player, dealer, message, game_over, outcome = new_game(msg_font, chips)
+                        betting_phase = True
                         payout_settled = False
-
-                        # 初期配られたカードで勝負がついていた（ナチュラルBJなど）場合の即座の精算処理
                         if game_over:
-                            payout = chips.settle_payout(outcome)
-                            payout_settled = True
-                            if outcome == "blackjack" or outcome == "win":
-                                message.text += f" (+{payout} chips)"
-                            elif outcome == "draw":
-                                message.text += " (Push)"
-                            else:
-                                message.text += f" (Lose {chips.current_bet} chips)"
                             result_timer = pg.time.get_ticks()
+                        else:
+                            result_timer = 0
+                        scene = "GAME"
 
-                # プレイ中（ヒット・スタンド選択）の時
-                elif not game_over:
-                    if event.key == pg.K_h:
-                        player.add(deck.draw())
-                        if player.total() > 21:
-                            message.text = "Bust! You Lose!"
-                            outcome = "lose"
+                # ゲーム画面でのキー受付
+                elif scene == "GAME":
+                    # ベットフェーズ（金額決め）の時
+                    if betting_phase:
+                        if event.key == pg.K_UP:
+                            chips.adjust_bet(10)
+                        elif event.key == pg.K_DOWN:
+                            chips.adjust_bet(-10)
+                        elif event.key == pg.K_RIGHT:
+                            chips.adjust_bet(100)
+                        elif event.key == pg.K_LEFT:
+                            chips.adjust_bet(-100)
+                        elif event.key == pg.K_RETURN:
+                            chips.place_bet()
+                            betting_phase = False
+                            payout_settled = False
+
+                            # 初期配られたカードで勝負がついていた（ナチュラルBJなど）場合の即座の精算処理
+                            if game_over:
+                                payout = chips.settle_payout(outcome)
+                                payout_settled = True
+                                if outcome == "blackjack" or outcome == "win":
+                                    message.text += f" (+{payout} chips)"
+                                elif outcome == "draw":
+                                    message.text += " (Push)"
+                                else:
+                                    message.text += f" (Lose {chips.current_bet} chips)"
+                                result_timer = pg.time.get_ticks()
+
+                    # プレイ中（ヒット・スタンド選択）の時
+                    elif not game_over:
+                        if event.key == pg.K_h:
+                            player.add(deck.draw())
+                            if player.total() > 21:
+                                message.text = "Bust! You Lose!"
+                                outcome = "lose"
+                                game_over = True
+                                result_timer = pg.time.get_ticks()
+
+                        elif event.key == pg.K_s:
+                            # ディーラーが17以上になるまで引き続ける
+                            while dealer.total() < 17:
+                                dealer.add(deck.draw())
+                            p = player.total()
+                            d = dealer.total()
+
+                            if d > 21:
+                                message.text = "Dealer Bust! You Win!"
+                                outcome = "win"
+                            elif p > d:
+                                message.text = "You Win!"
+                                outcome = "win"
+                            elif p < d:
+                                message.text = "You Lose!"
+                                outcome = "lose"
+                            else:
+                                message.text = "Draw!"
+                                outcome = "draw"
+
+                            # 勝負がついたので、ゲームオーバーとタイマーをセット
                             game_over = True
                             result_timer = pg.time.get_ticks()
 
-                    elif event.key == pg.K_s:
-                        # ディーラーが17以上になるまで引き続ける
-                        while dealer.total() < 17:
-                            dealer.add(deck.draw())
-                        p = player.total()
-                        d = dealer.total()
-
-                        if d > 21:
-                            message.text = "Dealer Bust! You Win!"
-                            outcome = "win"
-                        elif p > d:
-                            message.text = "You Win!"
-                            outcome = "win"
-                        elif p < d:
-                            message.text = "You Lose!"
-                            outcome = "lose"
-                        else:
-                            message.text = "Draw!"
-                            outcome = "draw"
-
-                        # 勝負がついたので、ゲームオーバーとタイマーをセット
-                        game_over = True
-                        result_timer = pg.time.get_ticks()
-
         # --- 2. 精算処理 (勝負が決まった瞬間に1回だけ実行) ---
-        if game_over and not betting_phase and not payout_settled:
+        if scene == "GAME" and game_over and not betting_phase and not payout_settled:
             payout = chips.settle_payout(outcome)
             payout_settled = True
             if outcome == "lose":
@@ -310,40 +329,52 @@ def main():
             else:
                 message.text += f" (+{payout} chips)"
 
-        # --- 3. 画面の描画 ---
-        screen.fill(GREEN)
-        chips.draw_ui(screen, font)
+        # --- 3. 画面の描画処理（シーンごとに完全に切り分け） ---
+        if scene == "TITLE":
+            screen.fill(WHITE)
+            title_text = main_menu_font.render("Blackjack", True, BLACK)
+            title_rect = title_text.get_rect(center=(WIDTH // 2, HEIGHT // 3))
+            screen.blit(title_text, title_rect)
 
-        if betting_phase:
-            # ベット選択画面のテキスト表示
-            guide_text1 = msg_font.render("ベット額を決めてください", True, WHITE)
-            guide_text2 = font.render("↑/↓ : ±10  |  ←/→ : ±100  |  Enter : 決定", True, WHITE)
-            screen.blit(guide_text1, (50, 250))
-            screen.blit(guide_text2, (50, 300))
-        else:
-            # 試合画面の表示
-            dealer.draw_dealer(screen, font, 50, 80, not game_over)
-            player.draw(screen, font, 50, 320)
-            message.update(screen)
+            start_text = font.render("E ボタンでスタート", True, BLACK)
+            start_rect = start_text.get_rect(center=(WIDTH // 2, HEIGHT // 3 * 2))
+            screen.blit(start_text, start_rect)
 
-            if not game_over:
-                guide = font.render("[H]: Hit (もう1枚)   [S]: Stand (勝負)", True, WHITE)
-                screen.blit(guide, (50, 20))
+        elif scene == "GAME":
+            screen.fill(GREEN)
+            chips.draw_ui(screen, font)
 
-        # 初期ブラックジャック演出（手札2枚かつ合計21点）
-        if player.total() == 21 and len(player.cards) == 2 and not betting_phase:
-            bg = Burakkujakku_gamen()
-            bg.burakkujakku_gamen(screen)
+            if betting_phase:
+                # ベット選択画面のテキスト表示
+                guide_text1 = msg_font.render("ベット額を決めてください", True, WHITE)
+                guide_text2 = font.render("↑/↓ : ±10  |  ←/→ : ±100  |  Enter : 決定", True, WHITE)
+                screen.blit(guide_text1, (50, 250))
+                screen.blit(guide_text2, (50, 300))
+            else:
+                # ゲーム画面の表示（手札や点数）
+                # ゲーム進行中（not game_over）はディーラーの1枚目を隠し、ゲームオーバーになったらオープン
+                dealer.draw_dealer(screen, font, 50, 80, not game_over)
+                player.draw(screen, font, 50, 320)
+                message.update(screen)
 
-        # 破産ゲームオーバー画面の重ね合わせ描画
-        if is_gameover_screen:
-            gmo.gamen(screen)
+                if not game_over:
+                    guide = font.render("[H]: Hit (もう1枚)   [S]: Stand (勝負)", True, WHITE)
+                    screen.blit(guide, (50, 20))
+
+            # 初期ブラックジャック演出（手札2枚かつ合計21点）
+            if player.total() == 21 and len(player.cards) == 2 and not betting_phase:
+                bg = Burakkujakku_gamen()
+                bg.burakkujakku_gamen(screen)
+
+            # 破産ゲームオーバー画面の重ね合わせ描画
+            if is_gameover_screen:
+                gmo.gamen(screen)
 
         # --- 4. 画面の更新 ---
         pg.display.update()
 
         # --- 5. ゲームの自動進行リセット & 破産チェック ---
-        if game_over and not betting_phase and not is_gameover_screen:
+        if scene == "GAME" and game_over and not betting_phase and not is_gameover_screen:
             # 勝敗表示後、2.5秒（2500ミリ秒）経過したら次へ
             if pg.time.get_ticks() - result_timer > 2500:
                 if chips.total_chips <= 0:
@@ -362,4 +393,4 @@ if __name__ == "__main__":
     pg.init()  # pygameを初期化
     main()  # ゲーム本体の開始
     pg.quit()  # pygameの終了
-    sys.exit()  # pythonプログラム自体の終了s
+    sys.exit()  # pythonプログラム自体の終了
